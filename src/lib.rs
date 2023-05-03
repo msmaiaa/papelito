@@ -1,215 +1,79 @@
 use std::sync::Arc;
 use leptos::*;
-use leptos::ev::{Event, InputEvent, KeyboardEvent};
-use wasm_bindgen::{JsValue, JsCast, closure::Closure};
-use web_sys::HtmlDocument;
-mod actions;
+use leptos::ev::{Event, KeyboardEvent};
+use wasm_bindgen::{JsCast, closure::Closure};
+use web_sys::{HtmlButtonElement, HtmlDivElement, HtmlDocument, Node};
+use crate::actions::LeptosRteActions;
 
-cfg_if::cfg_if! {
-    if #[cfg(not(feature="ssr"))] {
-        fn append_child(parent: web_sys::Element, child: web_sys::Element) {
-            parent.append_child(&child).unwrap();
-        }
-
-        fn create_element(name: &str) -> Result<web_sys::Element, JsValue> {
-            leptos_dom::document().create_element(name)
-        }
-
-        fn exec(command: &str, value: &str) {
-            let _ = leptos_dom::document()
-                .dyn_ref::<HtmlDocument>()
-                .expect("")
-                .exec_command_with_show_ui_and_value(command, false, value);
-        }
-    }
-}
-
-struct Action {
-    title: String,
-    icon: String,
-    result: Box<dyn Fn() -> ()>,
-    state: Option<Box<dyn Fn() -> Result<bool, JsValue>>>
-}
-
-struct Settings {
-    pub actions: Vec<Action>
-}
-
-cfg_if::cfg_if! {
-    if #[cfg(not(feature="ssr"))] {
-        impl Settings {
-    pub fn new() -> Self {
-        let actions: Vec<Action> = vec![
-            Action {
-                title: "Bold".to_string(),
-                icon: "<b>B</b>".to_string(),
-                result: Box::new(|| exec("bold", "")),
-                state: Some(Box::new(|| {
-                    leptos_dom::document()
-                        .dyn_ref::<HtmlDocument>()
-                        .expect("")
-                        .query_command_state("bold")
-                }))
-            },
-            Action {
-                title: "Code".to_string(),
-                icon: "&lt;/&gt;".to_string(),
-                result: Box::new(|| exec("formatBlock", "<pre>")),
-                state: None
-            },
-            Action {
-                title: "Heading 1".to_string(),
-                icon: "<b>H<sub>1</sub></b>".to_string(),
-                result: Box::new(|| exec("formatBlock", "<h1>")),
-                state: None
-            },
-            Action {
-                title: "Heading 2".to_string(),
-                icon: "<b>H<sub>2</sub></b>".to_string(),
-                result: Box::new(|| exec("formatBlock", "<h2>")),
-                state: None
-            },
-            Action {
-                title: "Image".to_string(),
-                icon: "&#128247;".to_string(),
-                result: Box::new(|| {
-                    let url = leptos_dom::window().prompt_with_message("Enter the image URL:");
-                    match url {
-                        Ok(Some(url)) => exec("insertImage", &url),
-                        _ => {}
-                    }
-                }),
-                state: None
-            },
-            Action {
-                title: "Italic".to_string(),
-                icon: "<i>I</i>".to_string(),
-                result: Box::new(|| exec("italic", "")),
-                state: None
-            },
-            Action {
-                title: "Horizontal Line".to_string(),
-                icon: "&#8213;".to_string(),
-                result: Box::new(|| exec("insertHorizontalRule", "")),
-                state: None
-            },
-            Action {
-                title: "Link".to_string(),
-                icon: "&#128279;".to_string(),
-                result: Box::new(|| {
-                    let url = leptos_dom::window().prompt_with_message("Enter the link URL:");
-                    match url {
-                        Ok(Some(url)) => exec("createLink", &url),
-                        _ => {}
-                    }
-                }),
-                state: None
-            },
-            Action {
-                title: "Ordered List".to_string(),
-                icon: "&#35;".to_string(),
-                result: Box::new(|| exec("insertOrderedList", "")),
-                state: None
-            },
-            Action {
-                title: "Paragraph".to_string(),
-                icon: "&#182;".to_string(),
-                result: Box::new(|| exec("formatBlock", "<p>")),
-                state: None
-            },
-            Action {
-                title: "Quote".to_string(),
-                icon: "&#8220; &#8221;".to_string(),
-                result: Box::new(|| exec("formatBlock", "<blockQuote>")),
-                state: None
-            },
-            Action {
-                title: "Strike-Through".to_string(),
-                icon: "<strike>S</strike>".to_string(),
-                result: Box::new(|| exec("strikeThrough", "")),
-                state: Some(Box::new(|| {
-                    leptos_dom::document()
-                        .dyn_ref::<HtmlDocument>()
-                        .expect("")
-                        .query_command_state("strikeThrough")
-                }))
-            },
-            Action {
-                title: "Unordered List".to_string(),
-                icon: "&#8226;".to_string(),
-                result: Box::new(|| exec("insertUnorderedList", "")),
-                state: None
-            },
-            Action {
-                title: "Underline".to_string(),
-                icon: "<u>U</u>".to_string(),
-                result: Box::new(|| exec("underline", "")),
-                state: Some(Box::new(|| {
-                    leptos_dom::document()
-                        .dyn_ref::<HtmlDocument>()
-                        .expect("")
-                        .query_command_state("underline")
-                }))
-            }
-        ];
-        Self {
-            actions
-        }
-    }
-}
-    }
-
-}
+pub mod util;
+pub mod actions;
 
 #[derive(Clone)]
-struct DefaultClasses {
+pub struct LeptosRteClasses {
     actionbar: String,
     button: String,
     content: String,
     selected: String,
+    editor: String
 }
 
-impl DefaultClasses {
-    fn new() -> Self {
+impl Default for LeptosRteClasses {
+    fn default() -> Self {
         Self {
-            actionbar: "pell-actionbar".to_string(),
-            button: "pell-button".to_string(),
-            content: "pell-content".to_string(),
-            selected: "pell-button-selected".to_string(),
+            actionbar: "rte-actionbar".to_string(),
+            button: "rte-button".to_string(),
+            content: "rte-content".to_string(),
+            selected: "rte-button-selected".to_string(),
+            editor: "rte-editor".to_string(),
         }
     }
 }
 
+type JsClosure<T> = Closure<dyn FnMut(T)>;
 
 #[component]
-pub fn TextEditor<F>(cx: Scope, on_change: F) -> impl IntoView
-    where F: Fn(String) + 'static + Copy
+pub fn LeptosRte(
+        cx: Scope,
+        key: String,
+        content_signal: RwSignal<String>,
+        #[prop(optional)] actions: LeptosRteActions,
+        #[prop(optional)] classes: LeptosRteClasses,
+        #[prop(optional)] default_paragraph_separator: String,
+        ) -> impl IntoView
     {
+    use crate::util::exec;
+    let _classes = classes.clone();
+    let _key = key.clone();
 
     create_effect(cx, move |_| {
-        let settings = Settings::new();
-        let classes = DefaultClasses::new();
-        let default_paragraph_separator = "div";
+        let default_paragraph_separator = match default_paragraph_separator.is_empty() {
+            true => Arc::new("div".to_string()),
+            false => Arc::new(default_paragraph_separator.clone())
+        };
+        let document = document();
 
-        let document = leptos_dom::document();
-        let action_bar = document.create_element("div").expect("couldn't create element");
-        let mock_parent = document.get_element_by_id("texteditor").expect("couldn't create element");
-        mock_parent.append_child(&action_bar).expect("couldn't append element");
+        let action_bar_el = document.create_element("div").expect("couldn't create element");
+        action_bar_el.dyn_ref::<HtmlDivElement>().unwrap().set_class_name(&classes.actionbar);
 
+        let editor_el = document.get_element_by_id(&_key).expect("couldn't create element");
+        editor_el.append_child(&action_bar_el).expect("couldn't append element");
 
         let _content: Arc<web_sys::Element> = Arc::new(document.create_element("div").expect("couldn't create element"));
-        let content = _content.clone();
-        let content = content.dyn_ref::<web_sys::HtmlDivElement>().unwrap();
-        content.set_content_editable("true");
-        content.set_class_name("texteditor");
+        let editor_content_el = _content.clone();
+        let editor_content_el = editor_content_el.dyn_ref::<web_sys::HtmlDivElement>().expect("couldn't cast to HtmlDivElement");
+        editor_content_el.set_inner_html(&content_signal.get());
 
+        editor_content_el.set_content_editable("true");
+        editor_content_el.set_class_name(&classes.content);
+
+        let separator = default_paragraph_separator.clone();
         let on_input: Closure<dyn Fn(Event)> = Closure::new(move |e: Event| {
-            let first_child = e.target().unwrap().dyn_ref::<web_sys::Node>().unwrap().first_child();
+            let first_child = e.target().unwrap().dyn_ref::<Node>().unwrap().first_child();
             match first_child {
                 Some(node) => {
                     match node.node_type() {
                         3 => {
-                            exec("formatBlock", &format!("<{default_paragraph_separator}>"));
+                            exec("formatBlock", &format!("<{separator}>")).expect("couldn't execute formatBlock");
                         }
                         _ => {}
                     }
@@ -224,42 +88,45 @@ pub fn TextEditor<F>(cx: Scope, on_change: F) -> impl IntoView
             }
             let t = e.target().unwrap();
             let t = t.dyn_ref::<web_sys::HtmlElement>().unwrap();
-            on_change(t.inner_html());
+            content_signal.update(|v| *v = t.inner_html());
         });
 
 
-        content.set_oninput(Some(on_input.as_ref().unchecked_ref()));
+        editor_content_el.set_oninput(Some(on_input.as_ref().unchecked_ref()));
         on_input.forget();
 
-        let on_keydown: Closure<dyn Fn(Event)> = Closure::new(move |e: Event| {
+        let separator = default_paragraph_separator.clone();
+        let on_keydown: JsClosure<Event> = Closure::new(move |e: Event| {
             let e = e.dyn_ref::<KeyboardEvent>().unwrap();
             let doc = leptos_dom::document();
             let html_doc = doc.dyn_ref::<HtmlDocument>().expect("");
             if e.key() == "Space" && html_doc.query_command_value("formatBlock").unwrap() == "blockquote" {
                 //  need timeout?
-                exec("formatBlock", &format!("<{default_paragraph_separator}>"));
+                exec("formatBlock", &format!("<{separator}>")).expect("couldn't execute formatBlock");
             }
         });
-        content.set_onkeydown(Some(on_keydown.as_ref().unchecked_ref()));
+        editor_content_el.set_onkeydown(Some(on_keydown.as_ref().unchecked_ref()));
         on_keydown.forget();
 
-        mock_parent.append_child(&content).expect("couldn't append element");
+        editor_el.append_child(&editor_content_el).expect("couldn't append element");
 
-        for action in settings.actions {
+        for action in actions.inner().clone() {
             let classes = classes.clone();
 
             let _button: Arc<web_sys::Element> = Arc::new(document.create_element("button").expect("couldn't create element"));
             let button = _button.clone();
-            let button = button.dyn_ref::<web_sys::HtmlButtonElement>().unwrap();
+            let button = button.dyn_ref::<HtmlButtonElement>().expect("couldn't cast the button to HtmlButtonElement");
             button.set_inner_html(&action.icon);
             button.set_title(&action.title);
-            button.set_class_name("texteditor-button");
-            button.set_attribute("type", "button").expect("couldn't set attribute");
+            button.set_class_name(&classes.button);
+            button.set_attribute("type", "button").expect(&format!("couldn't set attribute 'type' for the button for the following action: {}", action.title));
+
             let on_click_content = _content.clone();
-            let on_click: Closure<dyn Fn(Event)> = Closure::new(move |_| {
-                let content = on_click_content.dyn_ref::<web_sys::HtmlDivElement>().unwrap();
-                (action.result)();
-                content.focus();
+            let title = action.title.clone();
+            let on_click: JsClosure<Event> = Closure::new(move |_| {
+                let content = on_click_content.dyn_ref::<HtmlDivElement>().unwrap();
+                (action.result)().expect(&format!("couldn't execute the result for the '{}' action", title));
+                content.focus().expect("couldn't focus on the text editor's content");
             });
             button.set_onclick(Some(on_click.as_ref().unchecked_ref()));
             on_click.forget();
@@ -267,40 +134,33 @@ pub fn TextEditor<F>(cx: Scope, on_change: F) -> impl IntoView
             match action.state {
                 Some(s) => {
                     let handler_button = _button.clone();
-                    let handler: Closure<dyn Fn(Event)> = Closure::new(move |_| {
-                        let button = handler_button.dyn_ref::<web_sys::HtmlButtonElement>().unwrap();
+                    let handler: JsClosure<Event> = Closure::new(move |_| {
+                        let button = handler_button.dyn_ref::<HtmlButtonElement>().unwrap();
                         match s() {
                             Ok(true) => {
-                                button.class_list().add_1(&classes.selected);
+                                button.class_list().add_1(&classes.selected).expect(&format!("couldn't add the 'selected' class to the button of the following action: {}", action.title));
                             },
                             _ =>  {
-                                button.class_list().remove_1(&classes.selected);
+                                button.class_list().remove_1(&classes.selected).expect(&format!("couldn't remove the 'selected' class to the button of the following action: {}", action.title));
                             }
                         };
                     });
-                    let content = _content.clone();
-                    let content = content.dyn_ref::<web_sys::HtmlDivElement>().unwrap();
-                    content.set_onkeyup(Some(handler.as_ref().unchecked_ref()));
-                    content.set_onmouseup(Some(handler.as_ref().unchecked_ref()));
-                    button.set_onclick(Some(handler.as_ref().unchecked_ref()));
+                    let editor_content_el = _content.clone();
+                    let editor_content_el = editor_content_el.dyn_ref::<HtmlDivElement>().expect("couldn't the editor element cast to HtmlDivElement");
+                    editor_content_el.add_event_listener_with_callback("keyup", handler.as_ref().unchecked_ref()).expect("couldn't add event listener");
+                    editor_content_el.add_event_listener_with_callback("mouseup", handler.as_ref().unchecked_ref()).expect("couldn't add event listener");
+                    button.add_event_listener_with_callback("click", handler.as_ref().unchecked_ref()).expect("couldn't add event listener");
                     handler.forget();
                 }
                 None => {}
             }
-            action_bar.append_child(&button).expect("couldn't append element");
+            action_bar_el.append_child(&button).expect("couldn't append element");
         }
 
-        exec("defaultParagraphSeparator", &default_paragraph_separator);
+        exec("defaultParagraphSeparator", &default_paragraph_separator).expect("couldn't execute defaultParagraphSeparator");
     });
 
-
-    let (text, set_text) = create_signal(cx, "Hello World!".to_string());
-    let on_change = move |ev: Event| {
-        let value = event_target_value(&ev);
-        set_text(value);
-    };
-
     view! { cx,
-        <div id="texteditor"></div>
+        <div class=_classes.editor id=key></div>
     }
 }
