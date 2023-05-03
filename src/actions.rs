@@ -6,7 +6,7 @@ use crate::util::exec;
 pub struct Action {
     pub title: String,
     pub icon: String,
-    pub result: fn() -> Result<bool, JsValue>,
+    pub compute: fn() -> Result<bool, JsValue>,
     pub state: Option<fn() -> Result<bool, JsValue>>
 }
 
@@ -42,18 +42,10 @@ pub struct ActionsBuilder {
     actions: LeptosRteActions
 }
 
-impl From<LeptosRteActions> for ActionsBuilder {
-    fn from(actions: LeptosRteActions) -> Self {
-        Self {
-            actions
-        }
-    }
-}
-
 impl ActionsBuilder {
     pub fn new() -> Self {
         Self {
-            actions: LeptosRteActions::new()
+            actions: LeptosRteActions::new(),
         }
     }
 
@@ -82,6 +74,9 @@ impl ActionsBuilder {
             .with_image()
             .with_paragraph()
             .with_quote()
+            .with_justify_left()
+            .with_justify_center()
+            .with_justify_right()
     }
 
     pub fn add_action(&mut self, action: Action) -> &mut Self {
@@ -93,7 +88,7 @@ impl ActionsBuilder {
         self.add_action(Action {
             title: "Bold".to_string(),
             icon: "<b>B</b>".to_string(),
-            result: || exec("bold", ""),
+            compute: || exec("bold", ""),
             state: Some(|| {
                 leptos_dom::document()
                     .dyn_ref::<HtmlDocument>()
@@ -107,7 +102,7 @@ impl ActionsBuilder {
         self.add_action(Action {
             title: "Italic".to_string(),
             icon: "<i>I</i>".to_string(),
-            result: || exec("italic", ""),
+            compute: || exec("italic", ""),
             state: Some(|| {
                 leptos_dom::document()
                     .dyn_ref::<HtmlDocument>()
@@ -121,7 +116,7 @@ impl ActionsBuilder {
         self.add_action(Action {
             title: "Underline".to_string(),
             icon: "<u>U</u>".to_string(),
-            result: || exec("underline", ""),
+            compute: || exec("underline", ""),
             state: Some(|| {
                 leptos_dom::document()
                     .dyn_ref::<HtmlDocument>()
@@ -135,7 +130,7 @@ impl ActionsBuilder {
         self.add_action(Action {
             title: "Strikethrough".to_string(),
             icon: "<strike>S</strike>".to_string(),
-            result: || exec("strikeThrough", ""),
+            compute: || exec("strikeThrough", ""),
             state: Some(|| {
                 leptos_dom::document()
                     .dyn_ref::<HtmlDocument>()
@@ -149,7 +144,7 @@ impl ActionsBuilder {
         self.add_action(Action {
             title: "Code".to_string(),
             icon: "&lt;/&gt;".to_string(),
-            result: || exec("formatBlock", "<pre>"),
+            compute: || exec("formatBlock", "<pre>"),
             state: None
         })
     }
@@ -158,7 +153,7 @@ impl ActionsBuilder {
         self.add_action(Action {
             title: "Heading 1".to_string(),
             icon: "<b>H<sub>1</sub></b>".to_string(),
-            result: || exec("formatBlock", "<h1>"),
+            compute: || exec("formatBlock", "<h1>"),
             state: None
         })
     }
@@ -167,7 +162,7 @@ impl ActionsBuilder {
         self.add_action(Action {
             title: "Heading 2".to_string(),
             icon: "<b>H<sub>2</sub></b>".to_string(),
-            result: || exec("formatBlock", "<h2>"),
+            compute: || exec("formatBlock", "<h2>"),
             state: None
         })
     }
@@ -176,7 +171,7 @@ impl ActionsBuilder {
         self.add_action(Action {
             title: "Heading 3".to_string(),
             icon: "<b>H<sub>3</sub></b>".to_string(),
-            result: || exec("formatBlock", "<h3>"),
+            compute: || exec("formatBlock", "<h3>"),
             state: None
         })
     }
@@ -185,7 +180,7 @@ impl ActionsBuilder {
         self.add_action(Action {
             title: "Heading 4".to_string(),
             icon: "<b>H<sub>4</sub></b>".to_string(),
-            result: || exec("formatBlock", "<h4>"),
+            compute: || exec("formatBlock", "<h4>"),
             state: None
         })
     }
@@ -194,7 +189,7 @@ impl ActionsBuilder {
         self.add_action(Action {
             title: "Heading 5".to_string(),
             icon: "<b>H<sub>5</sub></b>".to_string(),
-            result: || exec("formatBlock", "<h5>"),
+            compute: || exec("formatBlock", "<h5>"),
             state: None
         })
     }
@@ -203,7 +198,7 @@ impl ActionsBuilder {
         self.add_action(Action {
             title: "Heading 6".to_string(),
             icon: "<b>H<sub>6</sub></b>".to_string(),
-            result: || exec("formatBlock", "<h6>"),
+            compute: || exec("formatBlock", "<h6>"),
             state: None
         })
     }
@@ -212,7 +207,7 @@ impl ActionsBuilder {
         self.add_action(Action {
             title: "Horizontal Line".to_string(),
             icon: "&#8213;".to_string(),
-            result: || exec("insertHorizontalRule", ""),
+            compute: || exec("insertHorizontalRule", ""),
             state: None
         })
     }
@@ -221,7 +216,7 @@ impl ActionsBuilder {
         self.add_action(Action {
             title: "Ordered List".to_string(),
             icon: "&#35;".to_string(),
-            result: || exec("insertOrderedList", ""),
+            compute: || exec("insertOrderedList", ""),
             state: None
         })
     }
@@ -230,7 +225,7 @@ impl ActionsBuilder {
         self.add_action(Action {
             title: "Unordered List".to_string(),
             icon: "&#8226;".to_string(),
-            result: || exec("insertUnorderedList", ""),
+            compute: || exec("insertUnorderedList", ""),
             state: None
         })
     }
@@ -239,7 +234,7 @@ impl ActionsBuilder {
         self.add_action(Action {
             title: "Link".to_string(),
             icon: "&#128279;".to_string(),
-            result: || {
+            compute: || {
                 let url = leptos_dom::window().prompt_with_message("Enter the link URL:");
                 match url {
                     Ok(Some(url)) => exec("createLink", &url),
@@ -254,7 +249,7 @@ impl ActionsBuilder {
         self.add_action(Action {
             title: "Image".to_string(),
             icon: "&#128247;".to_string(),
-            result: || {
+            compute: || {
                 let url = leptos_dom::window().prompt_with_message("Enter the image URL:");
                 match url {
                     Ok(Some(url)) => exec("insertImage", &url),
@@ -269,7 +264,7 @@ impl ActionsBuilder {
         self.add_action(Action {
             title: "Paragraph".to_string(),
             icon: "&#182;".to_string(),
-            result: || exec("formatBlock", "<p>"),
+            compute: || exec("formatBlock", "<p>"),
             state: None
         })
     }
@@ -278,8 +273,50 @@ impl ActionsBuilder {
         self.add_action(Action {
             title: "Quote".to_string(),
             icon: "&#8220; &#8221;".to_string(),
-            result: || exec("formatBlock", "<blockQuote>"),
+            compute: || exec("formatBlock", "<blockQuote>"),
             state: None
+        })
+    }
+
+    pub fn with_justify_center(&mut self) -> &mut Self {
+        self.add_action(Action {
+            title: "Justify Center".to_string(),
+            icon: r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Pro 6.4.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license (Commercial License) Copyright 2023 Fonticons, Inc. --><path d="M352 64c0-17.7-14.3-32-32-32H128c-17.7 0-32 14.3-32 32s14.3 32 32 32H320c17.7 0 32-14.3 32-32zm96 128c0-17.7-14.3-32-32-32H32c-17.7 0-32 14.3-32 32s14.3 32 32 32H416c17.7 0 32-14.3 32-32zM0 448c0 17.7 14.3 32 32 32H416c17.7 0 32-14.3 32-32s-14.3-32-32-32H32c-17.7 0-32 14.3-32 32zM352 320c0-17.7-14.3-32-32-32H128c-17.7 0-32 14.3-32 32s14.3 32 32 32H320c17.7 0 32-14.3 32-32z"/></svg>"#.to_string(),
+            compute: || exec("justifyCenter", ""),
+            state: Some(|| {
+                leptos_dom::document()
+                    .dyn_ref::<HtmlDocument>()
+                    .expect("")
+                    .query_command_state("justifyCenter")
+            })
+        })
+    }
+
+    pub fn with_justify_left(&mut self) -> &mut Self {
+        self.add_action(Action {
+            title: "Justify Left".to_string(),
+            icon: r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Pro 6.4.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license (Commercial License) Copyright 2023 Fonticons, Inc. --><path d="M288 64c0 17.7-14.3 32-32 32H32C14.3 96 0 81.7 0 64S14.3 32 32 32H256c17.7 0 32 14.3 32 32zm0 256c0 17.7-14.3 32-32 32H32c-17.7 0-32-14.3-32-32s14.3-32 32-32H256c17.7 0 32 14.3 32 32zM0 192c0-17.7 14.3-32 32-32H416c17.7 0 32 14.3 32 32s-14.3 32-32 32H32c-17.7 0-32-14.3-32-32zM448 448c0 17.7-14.3 32-32 32H32c-17.7 0-32-14.3-32-32s14.3-32 32-32H416c17.7 0 32 14.3 32 32z"/></svg>"#.to_string(),
+            compute: || exec("justifyLeft", ""),
+            state: Some(|| {
+                leptos_dom::document()
+                    .dyn_ref::<HtmlDocument>()
+                    .expect("")
+                    .query_command_state("justifyLeft")
+            })
+        })
+    }
+
+    pub fn with_justify_right(&mut self) -> &mut Self {
+        self.add_action(Action {
+            title: "Justify Right".to_string(),
+            icon: r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Pro 6.4.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license (Commercial License) Copyright 2023 Fonticons, Inc. --><path d="M448 64c0 17.7-14.3 32-32 32H192c-17.7 0-32-14.3-32-32s14.3-32 32-32H416c17.7 0 32 14.3 32 32zm0 256c0 17.7-14.3 32-32 32H192c-17.7 0-32-14.3-32-32s14.3-32 32-32H416c17.7 0 32 14.3 32 32zM0 192c0-17.7 14.3-32 32-32H416c17.7 0 32 14.3 32 32s-14.3 32-32 32H32c-17.7 0-32-14.3-32-32zM448 448c0 17.7-14.3 32-32 32H32c-17.7 0-32-14.3-32-32s14.3-32 32-32H416c17.7 0 32 14.3 32 32z"/></svg>"#.to_string(),
+            compute: || exec("justifyRight", ""),
+            state: Some(|| {
+                leptos_dom::document()
+                    .dyn_ref::<HtmlDocument>()
+                    .expect("")
+                    .query_command_state("justifyRight")
+            })
         })
     }
 }

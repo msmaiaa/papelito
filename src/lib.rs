@@ -10,23 +10,11 @@ pub mod actions;
 
 #[derive(Clone)]
 pub struct LeptosRteClasses {
-    actionbar: String,
-    button: String,
-    content: String,
-    selected: String,
-    editor: String
-}
-
-impl Default for LeptosRteClasses {
-    fn default() -> Self {
-        Self {
-            actionbar: "rte-actionbar".to_string(),
-            button: "rte-button".to_string(),
-            content: "rte-content".to_string(),
-            selected: "rte-button-selected".to_string(),
-            editor: "rte-editor".to_string(),
-        }
-    }
+    pub actionbar: String,
+    pub button: String,
+    pub content: String,
+    pub selected: String,
+    pub editor: String
 }
 
 type JsClosure<T> = Closure<dyn FnMut(T)>;
@@ -36,20 +24,24 @@ pub fn LeptosRte(
         cx: Scope,
         key: String,
         content_signal: RwSignal<String>,
+        classes: LeptosRteClasses,
         #[prop(optional)] actions: LeptosRteActions,
-        #[prop(optional)] classes: LeptosRteClasses,
         #[prop(optional)] default_paragraph_separator: String,
         ) -> impl IntoView
     {
     use crate::util::exec;
+    use crate::util::unchecked_remove_class_from_el;
     let _classes = classes.clone();
     let _key = key.clone();
+
+    let initial_value = content_signal.get();
 
     create_effect(cx, move |_| {
         let default_paragraph_separator = match default_paragraph_separator.is_empty() {
             true => Arc::new("div".to_string()),
             false => Arc::new(default_paragraph_separator.clone())
         };
+
         let document = document();
 
         let action_bar_el = document.create_element("div").expect("couldn't create element");
@@ -61,7 +53,7 @@ pub fn LeptosRte(
         let _content: Arc<web_sys::Element> = Arc::new(document.create_element("div").expect("couldn't create element"));
         let editor_content_el = _content.clone();
         let editor_content_el = editor_content_el.dyn_ref::<web_sys::HtmlDivElement>().expect("couldn't cast to HtmlDivElement");
-        editor_content_el.set_inner_html(&content_signal.get());
+        editor_content_el.set_inner_html(&initial_value);
 
         editor_content_el.set_content_editable("true");
         editor_content_el.set_class_name(&classes.content);
@@ -118,6 +110,7 @@ pub fn LeptosRte(
             let button = button.dyn_ref::<HtmlButtonElement>().expect("couldn't cast the button to HtmlButtonElement");
             button.set_inner_html(&action.icon);
             button.set_title(&action.title);
+            button.set_id(format!("{}-rte-btn", action.title.replace(" ", "")).as_str());
             button.set_class_name(&classes.button);
             button.set_attribute("type", "button").expect(&format!("couldn't set attribute 'type' for the button for the following action: {}", action.title));
 
@@ -125,25 +118,42 @@ pub fn LeptosRte(
             let title = action.title.clone();
             let on_click: JsClosure<Event> = Closure::new(move |_| {
                 let content = on_click_content.dyn_ref::<HtmlDivElement>().unwrap();
-                (action.result)().expect(&format!("couldn't execute the result for the '{}' action", title));
+                (action.compute)().expect(&format!("couldn't execute the result for the '{}' action", title));
                 content.focus().expect("couldn't focus on the text editor's content");
             });
             button.set_onclick(Some(on_click.as_ref().unchecked_ref()));
             on_click.forget();
 
             match action.state {
-                Some(s) => {
+                Some(state) => {
                     let handler_button = _button.clone();
                     let handler: JsClosure<Event> = Closure::new(move |_| {
                         let button = handler_button.dyn_ref::<HtmlButtonElement>().unwrap();
-                        match s() {
+                        match state() {
                             Ok(true) => {
                                 button.class_list().add_1(&classes.selected).expect(&format!("couldn't add the 'selected' class to the button of the following action: {}", action.title));
+                                let document = leptos_dom::document();
+                                match action.title.as_str() {
+                                    "Justify Left" => {
+                                        unchecked_remove_class_from_el(&document, "JustifyCenter-rte-btn", &classes.selected);
+                                        unchecked_remove_class_from_el(&document, "JustifyRight-rte-btn", &classes.selected);
+                                    }
+                                    "Justify Center" => {
+                                        unchecked_remove_class_from_el(&document, "JustifyLeft-rte-btn", &classes.selected);
+                                        unchecked_remove_class_from_el(&document, "JustifyRight-rte-btn", &classes.selected);
+                                    }
+                                    "Justify Right" => {
+                                        unchecked_remove_class_from_el(&document, "JustifyLeft-rte-btn", &classes.selected);
+                                        unchecked_remove_class_from_el(&document, "JustifyCenter-rte-btn", &classes.selected);
+                                    }
+                                    _ => {}
+                                }
                             },
                             _ =>  {
                                 button.class_list().remove_1(&classes.selected).expect(&format!("couldn't remove the 'selected' class to the button of the following action: {}", action.title));
                             }
                         };
+
                     });
                     let editor_content_el = _content.clone();
                     let editor_content_el = editor_content_el.dyn_ref::<HtmlDivElement>().expect("couldn't the editor element cast to HtmlDivElement");
