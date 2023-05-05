@@ -1,11 +1,12 @@
 use std::sync::Arc;
 use leptos::*;
 use leptos::ev::{Event, KeyboardEvent};
-use wasm_bindgen::{JsCast, closure::Closure};
-use web_sys::{HtmlButtonElement, HtmlDivElement, HtmlDocument, Node};
-use crate::actions::{ActionData, Actions};
+use wasm_bindgen::{closure::Closure, JsCast, JsValue};
+use crate::actions::{ActionData, Actions, Action as PapelitoAction};
 use lazy_static::lazy_static;
-use leptos_dom::is_browser;
+use leptos_dom::{is_browser, html::{Div}};
+use web_sys::{HtmlDocument, MouseEvent};
+use crate::util::{unchecked_remove_class_from_el};
 
 pub mod util;
 pub mod actions;
@@ -18,8 +19,6 @@ pub struct PapelitoClasses {
     pub selected: String,
     pub editor: String
 }
-
-type JsClosure<T> = Closure<dyn FnMut(T)>;
 
 cfg_if::cfg_if! {
     if #[cfg(not(feature="ssr"))] {
@@ -38,7 +37,7 @@ cfg_if::cfg_if! {
 #[cfg(not(feature="ssr"))]
 fn setup() {
     let handle_click: Closure<dyn FnMut(Event)> = Closure::new(move |e: Event| {
-        let target = e.target().unwrap().dyn_into::<Node>().unwrap();
+        let target = e.target().unwrap().dyn_into::<web_sys::Node>().unwrap();
         CONTEXT_MENUS.lock().unwrap().retain(|(menu_id, other_els)| {
             let menu_el = document().get_element_by_id(menu_id).unwrap();
             if !target.is_same_node(Some(&menu_el)) {
@@ -50,7 +49,7 @@ fn setup() {
                     }
                 }
                 if !clicked_on_el {
-                    let menu = menu_el.dyn_ref::<HtmlDivElement>().unwrap();
+                    let menu = menu_el.dyn_ref::<web_sys::HtmlDivElement>().unwrap();
                     menu.remove();
                     return false;
                 }
@@ -63,6 +62,7 @@ fn setup() {
     handle_click.forget();
 }
 
+
 #[component]
 pub fn Papelito(
         cx: Scope,
@@ -72,13 +72,20 @@ pub fn Papelito(
         #[prop(optional)] actions: Actions,
         #[prop(optional)] default_paragraph_separator: String,
         ) -> impl IntoView
-    {
+        {
     use crate::util::exec;
-    use crate::util::unchecked_remove_class_from_el;
+
     let _classes = classes.clone();
     let _key = key.clone();
 
     let initial_value = content_signal.get();
+
+    let content_ref = create_node_ref::<Div>(cx);
+
+    let default_paragraph_separator = match default_paragraph_separator.is_empty() {
+        true => Arc::new("div".to_string()),
+        false => Arc::new(default_paragraph_separator.clone())
+    };
 
     if is_browser() {
         let mut initialized = ALREADY_INITIALIZED.lock().unwrap();
@@ -88,170 +95,172 @@ pub fn Papelito(
         }
     }
 
-    create_effect(cx, move |_| {
-        let default_paragraph_separator = match default_paragraph_separator.is_empty() {
-            true => Arc::new("div".to_string()),
-            false => Arc::new(default_paragraph_separator.clone())
-        };
-
-        let document = document();
-
-        let action_bar_el = document.create_element("div").expect("couldn't create element");
-        action_bar_el.dyn_ref::<HtmlDivElement>().unwrap().set_class_name(&classes.actionbar);
-
-        let editor_el = document.get_element_by_id(&_key).expect("couldn't create element");
-        editor_el.append_child(&action_bar_el).expect("couldn't append element");
-
-        let _content: Arc<web_sys::Element> = Arc::new(document.create_element("div").expect("couldn't create element"));
-        let editor_content_el = _content.clone();
-        let editor_content_el = editor_content_el.dyn_ref::<web_sys::HtmlDivElement>().expect("couldn't cast to HtmlDivElement");
-        editor_content_el.set_inner_html(&initial_value);
-
-        editor_content_el.set_content_editable("true");
-        editor_content_el.set_class_name(&classes.content);
-
-        let separator = default_paragraph_separator.clone();
-        let on_input: Closure<dyn Fn(Event)> = Closure::new(move |e: Event| {
-            let first_child = e.target().unwrap().dyn_ref::<Node>().unwrap().first_child();
-            match first_child {
-                Some(node) => {
-                    match node.node_type() {
-                        3 => {
-                            exec("formatBlock", &format!("<{separator}>")).expect("couldn't execute formatBlock");
-                        }
-                        _ => {}
-                    }
-                }
-                None => {
-                    let t = e.target().unwrap();
-                    let t = t.dyn_ref::<web_sys::HtmlElement>().unwrap();
-                    if t.inner_html() == "<br>" {
-                        t.set_inner_html("");
-                    }
-                }
-            }
-            let t = e.target().unwrap();
-            let t = t.dyn_ref::<web_sys::HtmlElement>().unwrap();
-            content_signal.update(|v| *v = t.inner_html());
-        });
-
-
-        editor_content_el.set_oninput(Some(on_input.as_ref().unchecked_ref()));
-        on_input.forget();
-
-        let separator = default_paragraph_separator.clone();
-        let on_keydown: JsClosure<Event> = Closure::new(move |e: Event| {
-            let e = e.dyn_ref::<KeyboardEvent>().unwrap();
-            let doc = leptos_dom::document();
-            let html_doc = doc.dyn_ref::<HtmlDocument>().expect("");
-            if e.key() == "Space" && html_doc.query_command_value("formatBlock").unwrap() == "blockquote" {
-                exec("formatBlock", &format!("<{separator}>")).expect("couldn't execute formatBlock");
-            }
-        });
-        editor_content_el.set_onkeydown(Some(on_keydown.as_ref().unchecked_ref()));
-        on_keydown.forget();
-
-        editor_el.append_child(&editor_content_el).expect("couldn't append element");
-
-        for action in actions.inner().clone() {
-            let classes = classes.clone();
-
-            let _button: Arc<web_sys::Element> = Arc::new(document.create_element("button").expect("couldn't create element"));
-            let button = _button.clone();
-            let button = button.dyn_ref::<HtmlButtonElement>().expect("couldn't cast the button to HtmlButtonElement");
-            button.set_inner_html(&action.icon);
-            button.set_title(&action.title);
-            button.set_id(format!("{}-{}-rte-btn", _key.replace(" ", ""), action.title.replace(" ", "")).as_str());
-            button.set_class_name(&classes.button);
-            button.set_attribute("type", "button").expect(&format!("couldn't set attribute 'type' for the button for the following action: {}", action.title));
-
-            match button.first_child() {
-                Some(child) => {
-                    match child.node_type() {
-                        3 => {
-                            let wrapper = document.create_element("span").expect("couldn't create element");
-                            button.append_child(&wrapper).expect("couldn't append element");
-                            wrapper.append_child(&child).expect("couldn't append element");
-                            wrapper.dyn_ref::<web_sys::HtmlElement>().unwrap().set_attribute("pointer-events", "none").expect("couldn't set attribute 'pointer-events' for the button's child");
-                            //  FIXME: this errors out (?)
-                            let _ = button.remove_child(&child);
-                        }
-                        1 => {
-                            child.dyn_ref::<web_sys::Element>().unwrap().set_attribute("pointer-events", "none").expect("couldn't set attribute 'pointer-events' for the button's child");
-                        }
-                        _ => {}
-                    }
-                }
-                None => {
-                    let wrapper = document.create_element("span").expect("couldn't create element");
-                    wrapper.set_inner_html(&button.dyn_ref::<web_sys::HtmlElement>().unwrap().inner_html());
-                    wrapper.dyn_ref::<web_sys::HtmlElement>().unwrap().set_attribute("pointer-events", "none").expect("couldn't set attribute 'pointer-events' for the button's child");
-                    button.append_child(&wrapper).expect("couldn't append element");
-                }
-            }
-
-            let on_click_content = _content.clone();
-            let title = action.title.clone();
-            let key_clone = _key.clone();
-            let on_click: JsClosure<Event> = Closure::new(move |_| {
-                let _k = key_clone.clone();
-                let content = on_click_content.dyn_ref::<HtmlDivElement>().unwrap();
-                (action.compute)(ActionData {
-                    menu_key: _k,
-                }).expect(&format!("couldn't execute the result for the '{}' action", title));
-                content.focus().expect("couldn't focus on the text editor's content");
-            });
-            button.set_onclick(Some(on_click.as_ref().unchecked_ref()));
-            on_click.forget();
-
-            match action.state {
-                Some(state) => {
-                    let handler_button = _button.clone();
-                    let handler: JsClosure<Event> = Closure::new(move |e: Event| {
-                        e.stop_propagation();
-                        let button = handler_button.dyn_ref::<HtmlButtonElement>().unwrap();
-                        match state() {
-                            Ok(true) => {
-                                button.class_list().add_1(&classes.selected).expect(&format!("couldn't add the 'selected' class to the button of the following action: {}", action.title));
-                                let document = leptos_dom::document();
-                                match action.title.as_str() {
-                                    "Justify Left" => {
-                                        unchecked_remove_class_from_el(&document, "JustifyCenter-rte-btn", &classes.selected);
-                                        unchecked_remove_class_from_el(&document, "JustifyRight-rte-btn", &classes.selected);
-                                    }
-                                    "Justify Center" => {
-                                        unchecked_remove_class_from_el(&document, "JustifyLeft-rte-btn", &classes.selected);
-                                        unchecked_remove_class_from_el(&document, "JustifyRight-rte-btn", &classes.selected);
-                                    }
-                                    "Justify Right" => {
-                                        unchecked_remove_class_from_el(&document, "JustifyLeft-rte-btn", &classes.selected);
-                                        unchecked_remove_class_from_el(&document, "JustifyCenter-rte-btn", &classes.selected);
-                                    }
-                                    _ => {}
-                                }
-                            },
-                            _ =>  {
-                                button.class_list().remove_1(&classes.selected).expect(&format!("couldn't remove the 'selected' class to the button of the following action: {}", action.title));
-                            }
-                        };
-
-                    });
-                    let editor_content_el = _content.clone();
-                    let editor_content_el = editor_content_el.dyn_ref::<HtmlDivElement>().expect("couldn't the editor element cast to HtmlDivElement");
-                    editor_content_el.add_event_listener_with_callback("keyup", handler.as_ref().unchecked_ref()).expect("couldn't add event listener");
-                    editor_content_el.add_event_listener_with_callback("mouseup", handler.as_ref().unchecked_ref()).expect("couldn't add event listener");
-                    button.add_event_listener_with_callback("click", handler.as_ref().unchecked_ref()).expect("couldn't add event listener");
-                    handler.forget();
-                }
-                None => {}
-            }
-            action_bar_el.append_child(&button).expect("couldn't append element");
-        }
-
-        exec("defaultParagraphSeparator", &default_paragraph_separator).expect("couldn't execute defaultParagraphSeparator");
+    let _key_clone = key.clone();
+    content_ref.on_load(cx, move |content| {
+        let initial_value_clone = initial_value.clone();
+        content
+        .inner_html(initial_value_clone);
     });
 
+    let separator_clone = default_paragraph_separator.clone();
+    let on_content_change = move |e: Event| {
+        let first_child = e.target().unwrap().dyn_ref::<web_sys::Node>().unwrap().first_child();
+        match first_child {
+            Some(node) => {
+                match node.node_type() {
+                    3 => {
+                        exec("formatBlock", &format!("<{separator_clone}>")).expect("couldn't execute formatBlock");
+                    }
+                    _ => {}
+                }
+            }
+            None => {
+                let t = e.target().unwrap();
+                let t = t.dyn_ref::<web_sys::HtmlElement>().unwrap();
+                if t.inner_html() == "<br>" {
+                    t.set_inner_html("");
+                }
+            }
+        }
+
+        let t = e.target().unwrap();
+        let t = t.dyn_ref::<web_sys::HtmlElement>().unwrap();
+        content_signal.update(|v| *v = t.inner_html());
+    };
+
+    let keydown_separator_clone = default_paragraph_separator.clone();
+    let on_content_keydown = move |e: KeyboardEvent| {
+        let doc = document();
+        let html_doc = doc.dyn_ref::<HtmlDocument>().expect("");
+        if e.key() == "Space" && html_doc.query_command_value("formatBlock").unwrap() == "blockquote" {
+            exec("formatBlock", &format!("<{keydown_separator_clone}>")).expect("couldn't execute formatBlock");
+        }
+    };
+
+    let key_clone = _key.clone();
+    let selected_class = classes.selected.clone();
     view! { cx,
-        <div class=_classes.editor id=key></div>
+        <div class=_classes.editor id=key>
+            <div class=_classes.actionbar>
+                <For
+                    each=move || actions.inner().clone()
+                    key=|action| action.title.clone()
+                    view = move |cx, action: PapelitoAction| {
+                        view! {cx,
+                            <ActionButton selected_class=selected_class.clone() content_ref=content_ref action=action editor_key=_key.clone() class=classes.button.clone()/>
+                        }
+                    }
+                />
+            </div>
+            <div id=format!("{}-content", key_clone) on:keydown=on_content_keydown on:input=on_content_change class=_classes.content ref=content_ref contentEditable="true"></div>
+        </div>
+    }
+}
+
+#[cfg(not(feature="ssr"))]
+fn handle_btn_state(data: TempStruct) {
+    let button = document().get_element_by_id(&data.button_id.clone()).unwrap();
+    let button = button.dyn_ref::<web_sys::HtmlElement>().unwrap();
+    let title = button.get_attribute("title").unwrap();
+    match (data.state)() {
+        Ok(true) => {
+            button.class_list().add_1(&data.selected_class).unwrap();
+            let document = document();
+            let justify_center_id = format!("{}-JustifyCenter-rte-btn", data.key);
+            let justify_left_id = format!("{}-JustifyLeft-rte-btn", data.key);
+            let justify_right_id = format!("{}-JustifyRight-rte-btn", data.key);
+            match title.as_str() {
+                "Justify Left" => {
+                    unchecked_remove_class_from_el(&document, &justify_center_id, &data.selected_class);
+                    unchecked_remove_class_from_el(&document, &justify_right_id, &data.selected_class);
+                }
+                "Justify Center" => {
+                    unchecked_remove_class_from_el(&document, &justify_left_id, &data.selected_class);
+                    unchecked_remove_class_from_el(&document, &justify_right_id, &data.selected_class);
+                }
+                "Justify Right" => {
+                    unchecked_remove_class_from_el(&document, &justify_left_id, &data.selected_class);
+                    unchecked_remove_class_from_el(&document, &justify_center_id, &data.selected_class);
+                }
+                _ => {}
+            }
+        },
+        _ =>  {
+            button.class_list().remove_1(&data.selected_class).unwrap();
+        }
+    };
+}
+
+#[derive(Clone)]
+struct TempStruct {
+    button_id: String,
+    selected_class: String,
+    key: String,
+    state: fn() -> Result<bool, JsValue>
+}
+
+#[component]
+fn ActionButton(cx: Scope,
+                action: PapelitoAction,
+                editor_key: String,
+                content_ref: NodeRef<Div>,
+                selected_class: String,
+                #[prop(optional)] class: String) -> impl IntoView
+        {
+
+    let button_id = format!("{}-{}-rte-btn", editor_key.replace(" ", ""), action.title.replace(" ", ""));
+
+    let key_clone = editor_key.clone();
+    let id_clone = button_id.clone();
+    let class_clone = selected_class.clone();
+    let on_click = move |_: MouseEvent| {
+        let _ = (action.compute)(ActionData {
+            menu_key: key_clone.clone(),
+        });
+        let _ = content_ref.get_untracked().unwrap().focus();
+        match action.state {
+            Some(state) => {
+                let metadata = TempStruct {
+                    button_id: id_clone.clone(),
+                    selected_class: class_clone.clone(),
+                    key: key_clone.clone(),
+                    state
+                };
+                handle_btn_state(metadata);
+            }
+            None => {}
+        }
+    };
+
+
+    match action.state {
+        Some(state) => {
+            let btn_id = button_id.clone();
+            content_ref.on_load(cx, move |_| {
+                let metadata = TempStruct {
+                    button_id: btn_id.clone(),
+                    selected_class: selected_class.clone(),
+                    key: editor_key.clone(),
+                    state
+                };
+                let content = document().get_element_by_id(&format!("{}-content", editor_key.clone())).unwrap();
+                let content = content.dyn_ref::<web_sys::HtmlElement>().unwrap();
+                let handler_metadata = metadata.clone();
+                let handler: Closure<dyn Fn(Event)> = Closure::new(move |e: Event| {
+                    e.stop_propagation();
+                    handle_btn_state(handler_metadata.clone());
+                });
+                content.add_event_listener_with_callback("keyup", handler.as_ref().unchecked_ref()).expect("couldn't add event listener");
+                content.add_event_listener_with_callback("mouseup", handler.as_ref().unchecked_ref()).expect("couldn't add event listener");
+                handler.forget();
+            });
+        }
+        None => {}
+    }
+
+    view! {cx,
+        <button title=action.title class=class on:click=on_click id=button_id>
+            {(action.icon)(cx)}
+        </button>
     }
 }
