@@ -4,6 +4,7 @@ use leptos::ev::{Event, KeyboardEvent};
 use wasm_bindgen::{JsCast, closure::Closure};
 use web_sys::{HtmlButtonElement, HtmlDivElement, HtmlDocument, Node};
 use crate::actions::LeptosRteActions;
+use lazy_static::lazy_static;
 
 pub mod util;
 pub mod actions;
@@ -18,6 +19,48 @@ pub struct LeptosRteClasses {
 }
 
 type JsClosure<T> = Closure<dyn FnMut(T)>;
+
+cfg_if::cfg_if! {
+    if #[cfg(not(feature="ssr"))] {
+        use std::sync::Mutex;
+
+        type OtherElements = Vec<String>;
+        type ContextMenuId = String;
+
+        lazy_static! {
+            pub static ref CONTEXT_MENUS: Mutex<Vec<(ContextMenuId, OtherElements)>> = Mutex::new(Vec::new());
+        }
+    }
+}
+
+#[cfg(not(feature="ssr"))]
+pub fn setup() {
+    let handle_click: Closure<dyn FnMut(Event)> = Closure::new(move |e: Event| {
+        let target = e.target().unwrap().dyn_into::<Node>().unwrap();
+
+        CONTEXT_MENUS.lock().unwrap().retain(|(menu_id, other_els)| {
+            let menu_el = document().get_element_by_id(menu_id).unwrap();
+            if !target.is_same_node(Some(&menu_el)) {
+                let mut clicked_on_el = false;
+                for el in other_els {
+                    let _el = document().get_element_by_id(el).unwrap();
+                    if target.is_same_node(Some(&_el)) {
+                        clicked_on_el = true;
+                    }
+                }
+                if !clicked_on_el {
+                    let menu = menu_el.dyn_ref::<HtmlDivElement>().unwrap();
+                    menu.remove();
+                    return false;
+                }
+            }
+            return true;
+        })
+    });
+
+    document().add_event_listener_with_callback("click", handle_click.as_ref().unchecked_ref()).unwrap();
+    handle_click.forget();
+}
 
 #[component]
 pub fn LeptosRte(
@@ -93,7 +136,6 @@ pub fn LeptosRte(
             let doc = leptos_dom::document();
             let html_doc = doc.dyn_ref::<HtmlDocument>().expect("");
             if e.key() == "Space" && html_doc.query_command_value("formatBlock").unwrap() == "blockquote" {
-                //  need timeout?
                 exec("formatBlock", &format!("<{separator}>")).expect("couldn't execute formatBlock");
             }
         });
@@ -114,6 +156,31 @@ pub fn LeptosRte(
             button.set_class_name(&classes.button);
             button.set_attribute("type", "button").expect(&format!("couldn't set attribute 'type' for the button for the following action: {}", action.title));
 
+            match button.first_child() {
+                Some(child) => {
+                    match child.node_type() {
+                        3 => {
+                            let wrapper = document.create_element("span").expect("couldn't create element");
+                            button.append_child(&wrapper).expect("couldn't append element");
+                            wrapper.append_child(&child).expect("couldn't append element");
+                            wrapper.dyn_ref::<web_sys::HtmlElement>().unwrap().set_attribute("pointer-events", "none").expect("couldn't set attribute 'pointer-events' for the button's child");
+                            //  FIXME: this errors out (?)
+                            let _ = button.remove_child(&child);
+                        }
+                        1 => {
+                            child.dyn_ref::<web_sys::Element>().unwrap().set_attribute("pointer-events", "none").expect("couldn't set attribute 'pointer-events' for the button's child");
+                        }
+                        _ => {}
+                    }
+                }
+                None => {
+                    let wrapper = document.create_element("span").expect("couldn't create element");
+                    wrapper.set_inner_html(&button.dyn_ref::<web_sys::HtmlElement>().unwrap().inner_html());
+                    wrapper.dyn_ref::<web_sys::HtmlElement>().unwrap().set_attribute("pointer-events", "none").expect("couldn't set attribute 'pointer-events' for the button's child");
+                    button.append_child(&wrapper).expect("couldn't append element");
+                }
+            }
+
             let on_click_content = _content.clone();
             let title = action.title.clone();
             let on_click: JsClosure<Event> = Closure::new(move |_| {
@@ -127,7 +194,8 @@ pub fn LeptosRte(
             match action.state {
                 Some(state) => {
                     let handler_button = _button.clone();
-                    let handler: JsClosure<Event> = Closure::new(move |_| {
+                    let handler: JsClosure<Event> = Closure::new(move |e: Event| {
+                        e.stop_propagation();
                         let button = handler_button.dyn_ref::<HtmlButtonElement>().unwrap();
                         match state() {
                             Ok(true) => {
