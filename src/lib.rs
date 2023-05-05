@@ -3,8 +3,9 @@ use leptos::*;
 use leptos::ev::{Event, KeyboardEvent};
 use wasm_bindgen::{JsCast, closure::Closure};
 use web_sys::{HtmlButtonElement, HtmlDivElement, HtmlDocument, Node};
-use crate::actions::LeptosRteActions;
+use crate::actions::{ActionData, LeptosRteActions};
 use lazy_static::lazy_static;
+use leptos_dom::is_browser;
 
 pub mod util;
 pub mod actions;
@@ -29,15 +30,15 @@ cfg_if::cfg_if! {
 
         lazy_static! {
             pub static ref CONTEXT_MENUS: Mutex<Vec<(ContextMenuId, OtherElements)>> = Mutex::new(Vec::new());
+            pub static ref ALREADY_INITIALIZED: Mutex<bool> = Mutex::new(false);
         }
     }
 }
 
 #[cfg(not(feature="ssr"))]
-pub fn setup() {
+fn setup() {
     let handle_click: Closure<dyn FnMut(Event)> = Closure::new(move |e: Event| {
         let target = e.target().unwrap().dyn_into::<Node>().unwrap();
-
         CONTEXT_MENUS.lock().unwrap().retain(|(menu_id, other_els)| {
             let menu_el = document().get_element_by_id(menu_id).unwrap();
             if !target.is_same_node(Some(&menu_el)) {
@@ -78,6 +79,14 @@ pub fn LeptosRte(
     let _key = key.clone();
 
     let initial_value = content_signal.get();
+
+    if is_browser() {
+        let mut initialized = ALREADY_INITIALIZED.lock().unwrap();
+        if !*initialized {
+            setup();
+            *initialized = true;
+        }
+    }
 
     create_effect(cx, move |_| {
         let default_paragraph_separator = match default_paragraph_separator.is_empty() {
@@ -152,7 +161,7 @@ pub fn LeptosRte(
             let button = button.dyn_ref::<HtmlButtonElement>().expect("couldn't cast the button to HtmlButtonElement");
             button.set_inner_html(&action.icon);
             button.set_title(&action.title);
-            button.set_id(format!("{}-rte-btn", action.title.replace(" ", "")).as_str());
+            button.set_id(format!("{}-{}-rte-btn", _key.replace(" ", ""), action.title.replace(" ", "")).as_str());
             button.set_class_name(&classes.button);
             button.set_attribute("type", "button").expect(&format!("couldn't set attribute 'type' for the button for the following action: {}", action.title));
 
@@ -183,9 +192,13 @@ pub fn LeptosRte(
 
             let on_click_content = _content.clone();
             let title = action.title.clone();
+            let key_clone = _key.clone();
             let on_click: JsClosure<Event> = Closure::new(move |_| {
+                let _k = key_clone.clone();
                 let content = on_click_content.dyn_ref::<HtmlDivElement>().unwrap();
-                (action.compute)().expect(&format!("couldn't execute the result for the '{}' action", title));
+                (action.compute)(ActionData {
+                    menu_key: _k,
+                }).expect(&format!("couldn't execute the result for the '{}' action", title));
                 content.focus().expect("couldn't focus on the text editor's content");
             });
             button.set_onclick(Some(on_click.as_ref().unchecked_ref()));
