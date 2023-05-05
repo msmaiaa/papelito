@@ -3,12 +3,12 @@ use web_sys::{HtmlDocument};
 use wasm_bindgen::{JsValue, JsCast};
 use crate::util::{color_picker_menu, exec};
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct ActionData {
     pub menu_key: String
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Action {
     pub title: String,
     pub icon: String,
@@ -16,10 +16,10 @@ pub struct Action {
     pub state: Option<fn() -> Result<bool, JsValue>>
 }
 
-#[derive(Clone)]
-pub struct LeptosRteActions(Vec<Action>);
+#[derive(Clone, Debug)]
+pub struct Actions(Vec<Action>);
 
-impl LeptosRteActions {
+impl Actions {
     pub fn new() -> Self {
         Self(vec![])
     }
@@ -37,25 +37,25 @@ impl LeptosRteActions {
     }
 }
 
-impl Default for LeptosRteActions {
+impl Default for Actions {
     fn default() -> Self {
         ActionsBuilder::new().with_default_actions().build()
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct ActionsBuilder {
-    actions: LeptosRteActions
+    actions: Actions
 }
 
 impl ActionsBuilder {
     pub fn new() -> Self {
         Self {
-            actions: LeptosRteActions::new(),
+            actions: Actions::new(),
         }
     }
 
-    pub fn build(&mut self) -> LeptosRteActions {
+    pub fn build(&mut self) -> Actions {
         self.actions.clone()
     }
 

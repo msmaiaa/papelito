@@ -3,15 +3,15 @@ use leptos::*;
 use leptos::ev::{Event, KeyboardEvent};
 use wasm_bindgen::{JsCast, closure::Closure};
 use web_sys::{HtmlButtonElement, HtmlDivElement, HtmlDocument, Node};
-use crate::actions::{ActionData, LeptosRteActions};
+use crate::actions::{ActionData, Actions};
 use lazy_static::lazy_static;
 use leptos_dom::is_browser;
 
 pub mod util;
 pub mod actions;
 
-#[derive(Clone)]
-pub struct LeptosRteClasses {
+#[derive(Clone, Debug, PartialEq)]
+pub struct PapelitoClasses {
     pub actionbar: String,
     pub button: String,
     pub content: String,
@@ -64,12 +64,12 @@ fn setup() {
 }
 
 #[component]
-pub fn LeptosRte(
+pub fn Papelito(
         cx: Scope,
         key: String,
         content_signal: RwSignal<String>,
-        classes: LeptosRteClasses,
-        #[prop(optional)] actions: LeptosRteActions,
+        classes: PapelitoClasses,
+        #[prop(optional)] actions: Actions,
         #[prop(optional)] default_paragraph_separator: String,
         ) -> impl IntoView
     {
