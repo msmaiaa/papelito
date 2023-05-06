@@ -41,7 +41,7 @@ pub fn ActionButton(
 
     if let Some(state) = action.state {
         let btn_id = unique_btn_id.clone();
-        content_ref.on_load(cx, move |_| {
+        content_ref.on_load(cx, move |c| {
             let metadata = DataHandleBtnState {
                 button_id: btn_id.clone(),
                 selected_class: selected_class.clone(),
@@ -49,10 +49,7 @@ pub fn ActionButton(
                 state,
             };
 
-            let content_el = document()
-                .get_element_by_id(&format!("{}-content", editor_key.clone()))
-                .unwrap();
-            let content_el = content_el.dyn_ref::<web_sys::HtmlElement>().unwrap();
+            let content_el = c.dyn_ref::<web_sys::HtmlElement>().unwrap();
 
             let handler_metadata = metadata.clone();
 
