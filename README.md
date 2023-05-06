@@ -5,6 +5,11 @@ Papelito is a simple [WYSIWYG](https://en.wikipedia.org/wiki/WYSIWYG) editor for
 The library is in its early stages, "it works" but its modularity is far from what I would consider ideal, so expect breaking changes on future updates.
 
 ## Usage
+```toml
+[dependencies]
+papelito = {git = "https://github.com/msmaiaa/papelito"}
+```
+
 ```rust
 use leptos::*;
 use papelito::*;
