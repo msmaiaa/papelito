@@ -96,6 +96,20 @@ pub fn Papelito(
         false => Arc::new(default_paragraph_separator.clone()),
     };
 
+    create_effect(cx, move |_| {
+        let content_val = content_signal.get();
+        if let Some(content) = content_ref.get() {
+            if content_val
+                != content
+                    .dyn_ref::<web_sys::HtmlElement>()
+                    .unwrap()
+                    .inner_html()
+            {
+                content.inner_html(content_val);
+            }
+        }
+    });
+
     if is_browser() {
         let mut initialized = ALREADY_INITIALIZED.lock().unwrap();
         if !*initialized {
